@@ -722,7 +722,7 @@ pub(crate) struct BitReader<R> {
 }
 
 impl<R: BufRead> BitReader<R> {
-    const fn new(reader: R) -> Self {
+    pub(crate) const fn new(reader: R) -> Self {
         Self {
             reader,
             buffer: 0,

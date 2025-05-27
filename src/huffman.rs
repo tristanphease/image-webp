@@ -17,7 +17,8 @@ enum HuffmanTreeNode {
     Empty,
 }
 
-#[derive(Clone, Debug)]
+/// A huffman tree is either a basic case of a single code or a tree/table of multiple codes
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum HuffmanTreeInner {
     Single(u16),
     Tree {
@@ -28,7 +29,7 @@ enum HuffmanTreeInner {
 }
 
 /// Huffman tree
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct HuffmanTree(HuffmanTreeInner);
 
 impl Default for HuffmanTree {
@@ -38,7 +39,7 @@ impl Default for HuffmanTree {
 }
 
 impl HuffmanTree {
-    /// Builds a tree implicitly, just from code lengths
+    /// Builds a tree implicitly from just code lengths
     pub(crate) fn build_implicit(code_lengths: Vec<u16>) -> Result<Self, DecodingError> {
         // Count symbols and build histogram
         let mut num_symbols = 0;
@@ -62,7 +63,12 @@ impl HuffmanTree {
         let max_code_length = code_length_hist.iter().rposition(|&x| x != 0).unwrap() as u16;
         for code_len in 1..usize::from(max_code_length) + 1 {
             next_codes[code_len] = curr_code;
-            curr_code = (curr_code + code_length_hist[code_len]) << 1;
+            curr_code = u16::checked_shl(
+                u16::checked_add(curr_code, code_length_hist[code_len])
+                    .ok_or(DecodingError::HuffmanError)?,
+                1,
+            )
+            .ok_or(DecodingError::HuffmanError)?;
         }
 
         // Confirm that the huffman tree is valid
@@ -196,7 +202,7 @@ impl HuffmanTree {
 
     /// Reads a symbol using the bit reader.
     ///
-    /// You must call call `bit_reader.fill()` before calling this function or it may erroroneosly
+    /// You must call `bit_reader.fill()` before calling this function or it may erroroneosly
     /// detect the end of the stream and return a bitstream error.
     pub(crate) fn read_symbol<R: BufRead>(
         &self,
@@ -244,5 +250,54 @@ impl HuffmanTree {
             }
             HuffmanTreeInner::Single(symbol) => Some((0, *symbol)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+
+    use super::*;
+
+    type TestBitReader = BitReader<Cursor<Vec<u8>>>;
+    fn construct_bit_reader(bytes_to_read: Vec<u8>) -> TestBitReader {
+        let cursor = Cursor::new(bytes_to_read);
+        BitReader::new(cursor)
+    }
+
+    fn test_results(huffman_tree: &HuffmanTree, bits_input: Vec<u8>, bytes_results: Vec<u8>) {
+        let mut bit_reader = construct_bit_reader(bits_input);
+        bit_reader.fill().unwrap();
+
+        for byte_value in bytes_results.iter() {
+            assert_eq!(
+                huffman_tree.read_symbol(&mut bit_reader).unwrap(),
+                u16::from(*byte_value)
+            );
+        }
+    }
+
+    #[test]
+    fn empty_tree_error() {
+        let code_lengths = vec![0];
+        let result = HuffmanTree::build_implicit(code_lengths);
+        assert!(result.is_err());
+    }
+
+    ///
+    /// We build up a table where the index of the code is the symbol
+    ///
+    #[test]
+    fn test_canonical_huffman_tree() {
+        // encode 0 as 110, 1 as 0, 2 as 10, 3 as 111
+        let code_lengths = vec![3, 1, 2, 3];
+        let huffman_tree = HuffmanTree::build_implicit(code_lengths).unwrap();
+
+        // check bits match from tree
+        test_results(
+            &huffman_tree,
+            vec![u8::reverse_bits(0b01110100)],
+            vec![1, 3, 1, 2, 1],
+        );
     }
 }
