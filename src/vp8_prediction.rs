@@ -130,18 +130,18 @@ pub(crate) fn create_border_chroma(
 //
 // Clippy suggests the clamp method, but it seems to optimize worse as of rustc 1.82.0 nightly.
 #[allow(clippy::manual_clamp)]
-pub(crate) fn add_residue<const stride: usize>(
+pub(crate) fn add_residue<const STRIDE: usize>(
     pblock: &mut [u8],
     rblock: &[i32; 16],
     y0: usize,
     x0: usize,
 ) {
-    let mut pos = y0 * stride + x0;
+    let mut pos = y0 * STRIDE + x0;
     for row in rblock.chunks(4) {
         for (p, &a) in pblock[pos..][..4].iter_mut().zip(row.iter()) {
             *p = (a + i32::from(*p)).max(0).min(255) as u8;
         }
-        pos += stride;
+        pos += STRIDE;
     }
 }
 
@@ -155,7 +155,7 @@ fn avg2(this: u8, right: u8) -> u8 {
     avg as u8
 }
 
-pub(crate) fn predict_4x4<const stride: usize>(
+pub(crate) fn predict_4x4<const STRIDE: usize>(
     ws: &mut [u8],
     modes: &[IntraMode],
     resdata: &[i32],
@@ -167,37 +167,37 @@ pub(crate) fn predict_4x4<const stride: usize>(
             let x0 = sbx * 4 + 1;
 
             match modes[i] {
-                IntraMode::TM => predict_tmpred::<4, stride>(ws, x0, y0),
-                IntraMode::VE => predict_bvepred::<stride>(ws, x0, y0),
-                IntraMode::HE => predict_bhepred::<stride>(ws, x0, y0),
-                IntraMode::DC => predict_bdcpred::<stride>(ws, x0, y0),
-                IntraMode::LD => predict_bldpred::<stride>(ws, x0, y0),
-                IntraMode::RD => predict_brdpred::<stride>(ws, x0, y0),
-                IntraMode::VR => predict_bvrpred::<stride>(ws, x0, y0),
-                IntraMode::VL => predict_bvlpred::<stride>(ws, x0, y0),
-                IntraMode::HD => predict_bhdpred::<stride>(ws, x0, y0),
-                IntraMode::HU => predict_bhupred::<stride>(ws, x0, y0),
+                IntraMode::TM => predict_tmpred::<4, STRIDE>(ws, x0, y0),
+                IntraMode::VE => predict_bvepred::<STRIDE>(ws, x0, y0),
+                IntraMode::HE => predict_bhepred::<STRIDE>(ws, x0, y0),
+                IntraMode::DC => predict_bdcpred::<STRIDE>(ws, x0, y0),
+                IntraMode::LD => predict_bldpred::<STRIDE>(ws, x0, y0),
+                IntraMode::RD => predict_brdpred::<STRIDE>(ws, x0, y0),
+                IntraMode::VR => predict_bvrpred::<STRIDE>(ws, x0, y0),
+                IntraMode::VL => predict_bvlpred::<STRIDE>(ws, x0, y0),
+                IntraMode::HD => predict_bhdpred::<STRIDE>(ws, x0, y0),
+                IntraMode::HU => predict_bhupred::<STRIDE>(ws, x0, y0),
             }
 
             let rb: &[i32; 16] = resdata[i * 16..][..16].try_into().unwrap();
-            add_residue::<stride>(ws, rb, y0, x0);
+            add_residue::<STRIDE>(ws, rb, y0, x0);
         }
     }
 }
 
 pub(crate) fn predict_vpred<
-    const size: usize,
-    const x0: usize,
-    const y0: usize,
-    const stride: usize,
+    const SIZE: usize,
+    const X0: usize,
+    const Y0: usize,
+    const STRIDE: usize,
 >(
     a: &mut [u8],
 ) {
     // This pass copies the top row to the rows below it.
-    let (above, curr) = a.split_at_mut(stride * y0);
-    let above_slice = &above[x0..];
+    let (above, curr) = a.split_at_mut(STRIDE * Y0);
+    let above_slice = &above[X0..];
 
-    for curr_chunk in curr.chunks_exact_mut(stride).take(size) {
+    for curr_chunk in curr.chunks_exact_mut(STRIDE).take(SIZE) {
         for (curr, &above) in curr_chunk[1..].iter_mut().zip(above_slice) {
             *curr = above;
         }
@@ -205,38 +205,38 @@ pub(crate) fn predict_vpred<
 }
 
 pub(crate) fn predict_hpred<
-    const size: usize,
-    const stride: usize,
-    const x0: usize,
-    const y0: usize,
+    const SIZE: usize,
+    const STRIDE: usize,
+    const X0: usize,
+    const Y0: usize,
 >(
     a: &mut [u8],
 ) {
     // This pass copies the first value of a row to the values right of it.
-    for chunk in a.chunks_exact_mut(stride).skip(y0).take(size) {
-        let left = chunk[x0 - 1];
-        chunk[x0..].iter_mut().for_each(|a| *a = left);
+    for chunk in a.chunks_exact_mut(STRIDE).skip(Y0).take(SIZE) {
+        let left = chunk[X0 - 1];
+        chunk[X0..].iter_mut().for_each(|a| *a = left);
     }
 }
 
-pub(crate) fn predict_dcpred<const size: usize, const stride: usize>(
+pub(crate) fn predict_dcpred<const SIZE: usize, const STRIDE: usize>(
     a: &mut [u8],
     above: bool,
     left: bool,
 ) {
     let mut sum = 0;
-    let mut shf = if size == 8 { 2 } else { 3 };
+    let mut shf = if SIZE == 8 { 2 } else { 3 };
 
     if left {
-        for y in 0usize..size {
-            sum += u32::from(a[(y + 1) * stride]);
+        for y in 0usize..SIZE {
+            sum += u32::from(a[(y + 1) * STRIDE]);
         }
 
         shf += 1;
     }
 
     if above {
-        sum += a[1..=size].iter().fold(0, |acc, &x| acc + u32::from(x));
+        sum += a[1..=SIZE].iter().fold(0, |acc, &x| acc + u32::from(x));
 
         shf += 1;
     }
@@ -247,8 +247,8 @@ pub(crate) fn predict_dcpred<const size: usize, const stride: usize>(
         (sum + (1 << (shf - 1))) >> shf
     };
 
-    for y in 0usize..size {
-        a[1 + stride * (y + 1)..][..size]
+    for y in 0usize..SIZE {
+        a[1 + STRIDE * (y + 1)..][..SIZE]
             .iter_mut()
             .for_each(|a| *a = dcval as u8);
     }
@@ -256,7 +256,7 @@ pub(crate) fn predict_dcpred<const size: usize, const stride: usize>(
 
 // Clippy suggests the clamp method, but it seems to optimize worse as of rustc 1.82.0 nightly.
 #[allow(clippy::manual_clamp)]
-pub(crate) fn predict_tmpred<const size: usize, const stride: usize>(
+pub(crate) fn predict_tmpred<const SIZE: usize, const STRIDE: usize>(
     a: &mut [u8],
     x0: usize,
     y0: usize,
@@ -278,34 +278,34 @@ pub(crate) fn predict_tmpred<const size: usize, const stride: usize>(
     // Diagram from p. 52 of RFC 6386
 
     // Split at L0
-    let (above, x_block) = a.split_at_mut(y0 * stride + (x0 - 1));
-    let p = i32::from(above[(y0 - 1) * stride + x0 - 1]);
-    let above_slice = &above[(y0 - 1) * stride + x0..];
+    let (above, x_block) = a.split_at_mut(y0 * STRIDE + (x0 - 1));
+    let p = i32::from(above[(y0 - 1) * STRIDE + x0 - 1]);
+    let above_slice = &above[(y0 - 1) * STRIDE + x0..];
 
-    for y in 0usize..size {
-        let left_minus_p = i32::from(x_block[y * stride]) - p;
+    for y in 0usize..SIZE {
+        let left_minus_p = i32::from(x_block[y * STRIDE]) - p;
 
         // Add 1 to skip over L0 byte
-        x_block[y * stride + 1..][..size]
+        x_block[y * STRIDE + 1..][..SIZE]
             .iter_mut()
             .zip(above_slice)
             .for_each(|(cur, &abv)| *cur = (left_minus_p + i32::from(abv)).max(0).min(255) as u8);
     }
 }
 
-fn predict_bdcpred<const stride: usize>(a: &mut [u8], x0: usize, y0: usize) {
+fn predict_bdcpred<const STRIDE: usize>(a: &mut [u8], x0: usize, y0: usize) {
     let mut v = 4;
 
-    a[(y0 - 1) * stride + x0..][..4]
+    a[(y0 - 1) * STRIDE + x0..][..4]
         .iter()
         .for_each(|&a| v += u32::from(a));
 
     for i in 0usize..4 {
-        v += u32::from(a[(y0 + i) * stride + x0 - 1]);
+        v += u32::from(a[(y0 + i) * STRIDE + x0 - 1]);
     }
 
     v >>= 3;
-    for chunk in a.chunks_exact_mut(stride).skip(y0).take(4) {
+    for chunk in a.chunks_exact_mut(STRIDE).skip(y0).take(4) {
         for ch in &mut chunk[x0..][..4] {
             *ch = v as u8;
         }
@@ -361,9 +361,9 @@ fn edge_pixels(
     (e0, e1, e2, e3, e4, e5, e6, e7, e8)
 }
 
-fn predict_bvepred<const stride: usize>(a: &mut [u8], x0: usize, y0: usize) {
-    let p = topleft_pixel(a, x0, y0, stride);
-    let (a0, a1, a2, a3, a4, ..) = top_pixels(a, x0, y0, stride);
+fn predict_bvepred<const STRIDE: usize>(a: &mut [u8], x0: usize, y0: usize) {
+    let p = topleft_pixel(a, x0, y0, STRIDE);
+    let (a0, a1, a2, a3, a4, ..) = top_pixels(a, x0, y0, STRIDE);
     let avg_1 = avg3(p, a0, a1);
     let avg_2 = avg3(a0, a1, a2);
     let avg_3 = avg3(a1, a2, a3);
@@ -371,16 +371,16 @@ fn predict_bvepred<const stride: usize>(a: &mut [u8], x0: usize, y0: usize) {
 
     let avg = [avg_1, avg_2, avg_3, avg_4];
 
-    let mut pos = y0 * stride + x0;
+    let mut pos = y0 * STRIDE + x0;
     for _ in 0..4 {
         a[pos..=pos + 3].copy_from_slice(&avg);
-        pos += stride;
+        pos += STRIDE;
     }
 }
 
-fn predict_bhepred<const stride: usize>(a: &mut [u8], x0: usize, y0: usize) {
-    let p = topleft_pixel(a, x0, y0, stride);
-    let (l0, l1, l2, l3) = left_pixels(a, x0, y0, stride);
+fn predict_bhepred<const STRIDE: usize>(a: &mut [u8], x0: usize, y0: usize) {
+    let p = topleft_pixel(a, x0, y0, STRIDE);
+    let (l0, l1, l2, l3) = left_pixels(a, x0, y0, STRIDE);
 
     let avgs = [
         avg3(p, l0, l1),
@@ -389,17 +389,17 @@ fn predict_bhepred<const stride: usize>(a: &mut [u8], x0: usize, y0: usize) {
         avg3(l2, l3, l3),
     ];
 
-    let mut pos = y0 * stride + x0;
+    let mut pos = y0 * STRIDE + x0;
     for avg in avgs {
         for a_p in &mut a[pos..=pos + 3] {
             *a_p = avg;
         }
-        pos += stride;
+        pos += STRIDE;
     }
 }
 
-fn predict_bldpred<const stride: usize>(a: &mut [u8], x0: usize, y0: usize) {
-    let (a0, a1, a2, a3, a4, a5, a6, a7) = top_pixels(a, x0, y0, stride);
+fn predict_bldpred<const STRIDE: usize>(a: &mut [u8], x0: usize, y0: usize) {
+    let (a0, a1, a2, a3, a4, a5, a6, a7) = top_pixels(a, x0, y0, STRIDE);
 
     let avgs = [
         avg3(a0, a1, a2),
@@ -411,16 +411,16 @@ fn predict_bldpred<const stride: usize>(a: &mut [u8], x0: usize, y0: usize) {
         avg3(a6, a7, a7),
     ];
 
-    let mut pos = y0 * stride + x0;
+    let mut pos = y0 * STRIDE + x0;
 
     for i in 0..4 {
         a[pos..=pos + 3].copy_from_slice(&avgs[i..=i + 3]);
-        pos += stride;
+        pos += STRIDE;
     }
 }
 
-fn predict_brdpred<const stride: usize>(a: &mut [u8], x0: usize, y0: usize) {
-    let (e0, e1, e2, e3, e4, e5, e6, e7, e8) = edge_pixels(a, x0, y0, stride);
+fn predict_brdpred<const STRIDE: usize>(a: &mut [u8], x0: usize, y0: usize) {
+    let (e0, e1, e2, e3, e4, e5, e6, e7, e8) = edge_pixels(a, x0, y0, STRIDE);
 
     let avgs = [
         avg3(e0, e1, e2),
@@ -431,96 +431,96 @@ fn predict_brdpred<const stride: usize>(a: &mut [u8], x0: usize, y0: usize) {
         avg3(e5, e6, e7),
         avg3(e6, e7, e8),
     ];
-    let mut pos = y0 * stride + x0;
+    let mut pos = y0 * STRIDE + x0;
 
     for i in 0..4 {
         a[pos..=pos + 3].copy_from_slice(&avgs[3 - i..7 - i]);
-        pos += stride;
+        pos += STRIDE;
     }
 }
 
-fn predict_bvrpred<const stride: usize>(a: &mut [u8], x0: usize, y0: usize) {
-    let (_, e1, e2, e3, e4, e5, e6, e7, e8) = edge_pixels(a, x0, y0, stride);
+fn predict_bvrpred<const STRIDE: usize>(a: &mut [u8], x0: usize, y0: usize) {
+    let (_, e1, e2, e3, e4, e5, e6, e7, e8) = edge_pixels(a, x0, y0, STRIDE);
 
-    a[(y0 + 3) * stride + x0] = avg3(e1, e2, e3);
-    a[(y0 + 2) * stride + x0] = avg3(e2, e3, e4);
-    a[(y0 + 3) * stride + x0 + 1] = avg3(e3, e4, e5);
-    a[(y0 + 1) * stride + x0] = avg3(e3, e4, e5);
-    a[(y0 + 2) * stride + x0 + 1] = avg2(e4, e5);
-    a[y0 * stride + x0] = avg2(e4, e5);
-    a[(y0 + 3) * stride + x0 + 2] = avg3(e4, e5, e6);
-    a[(y0 + 1) * stride + x0 + 1] = avg3(e4, e5, e6);
-    a[(y0 + 2) * stride + x0 + 2] = avg2(e5, e6);
-    a[y0 * stride + x0 + 1] = avg2(e5, e6);
-    a[(y0 + 3) * stride + x0 + 3] = avg3(e5, e6, e7);
-    a[(y0 + 1) * stride + x0 + 2] = avg3(e5, e6, e7);
-    a[(y0 + 2) * stride + x0 + 3] = avg2(e6, e7);
-    a[y0 * stride + x0 + 2] = avg2(e6, e7);
-    a[(y0 + 1) * stride + x0 + 3] = avg3(e6, e7, e8);
-    a[y0 * stride + x0 + 3] = avg2(e7, e8);
+    a[(y0 + 3) * STRIDE + x0] = avg3(e1, e2, e3);
+    a[(y0 + 2) * STRIDE + x0] = avg3(e2, e3, e4);
+    a[(y0 + 3) * STRIDE + x0 + 1] = avg3(e3, e4, e5);
+    a[(y0 + 1) * STRIDE + x0] = avg3(e3, e4, e5);
+    a[(y0 + 2) * STRIDE + x0 + 1] = avg2(e4, e5);
+    a[y0 * STRIDE + x0] = avg2(e4, e5);
+    a[(y0 + 3) * STRIDE + x0 + 2] = avg3(e4, e5, e6);
+    a[(y0 + 1) * STRIDE + x0 + 1] = avg3(e4, e5, e6);
+    a[(y0 + 2) * STRIDE + x0 + 2] = avg2(e5, e6);
+    a[y0 * STRIDE + x0 + 1] = avg2(e5, e6);
+    a[(y0 + 3) * STRIDE + x0 + 3] = avg3(e5, e6, e7);
+    a[(y0 + 1) * STRIDE + x0 + 2] = avg3(e5, e6, e7);
+    a[(y0 + 2) * STRIDE + x0 + 3] = avg2(e6, e7);
+    a[y0 * STRIDE + x0 + 2] = avg2(e6, e7);
+    a[(y0 + 1) * STRIDE + x0 + 3] = avg3(e6, e7, e8);
+    a[y0 * STRIDE + x0 + 3] = avg2(e7, e8);
 }
 
-fn predict_bvlpred<const stride: usize>(a: &mut [u8], x0: usize, y0: usize) {
-    let (a0, a1, a2, a3, a4, a5, a6, a7) = top_pixels(a, x0, y0, stride);
+fn predict_bvlpred<const STRIDE: usize>(a: &mut [u8], x0: usize, y0: usize) {
+    let (a0, a1, a2, a3, a4, a5, a6, a7) = top_pixels(a, x0, y0, STRIDE);
 
-    a[y0 * stride + x0] = avg2(a0, a1);
-    a[(y0 + 1) * stride + x0] = avg3(a0, a1, a2);
-    a[(y0 + 2) * stride + x0] = avg2(a1, a2);
-    a[y0 * stride + x0 + 1] = avg2(a1, a2);
-    a[(y0 + 1) * stride + x0 + 1] = avg3(a1, a2, a3);
-    a[(y0 + 3) * stride + x0] = avg3(a1, a2, a3);
-    a[(y0 + 2) * stride + x0 + 1] = avg2(a2, a3);
-    a[y0 * stride + x0 + 2] = avg2(a2, a3);
-    a[(y0 + 3) * stride + x0 + 1] = avg3(a2, a3, a4);
-    a[(y0 + 1) * stride + x0 + 2] = avg3(a2, a3, a4);
-    a[(y0 + 2) * stride + x0 + 2] = avg2(a3, a4);
-    a[y0 * stride + x0 + 3] = avg2(a3, a4);
-    a[(y0 + 3) * stride + x0 + 2] = avg3(a3, a4, a5);
-    a[(y0 + 1) * stride + x0 + 3] = avg3(a3, a4, a5);
-    a[(y0 + 2) * stride + x0 + 3] = avg3(a4, a5, a6);
-    a[(y0 + 3) * stride + x0 + 3] = avg3(a5, a6, a7);
+    a[y0 * STRIDE + x0] = avg2(a0, a1);
+    a[(y0 + 1) * STRIDE + x0] = avg3(a0, a1, a2);
+    a[(y0 + 2) * STRIDE + x0] = avg2(a1, a2);
+    a[y0 * STRIDE + x0 + 1] = avg2(a1, a2);
+    a[(y0 + 1) * STRIDE + x0 + 1] = avg3(a1, a2, a3);
+    a[(y0 + 3) * STRIDE + x0] = avg3(a1, a2, a3);
+    a[(y0 + 2) * STRIDE + x0 + 1] = avg2(a2, a3);
+    a[y0 * STRIDE + x0 + 2] = avg2(a2, a3);
+    a[(y0 + 3) * STRIDE + x0 + 1] = avg3(a2, a3, a4);
+    a[(y0 + 1) * STRIDE + x0 + 2] = avg3(a2, a3, a4);
+    a[(y0 + 2) * STRIDE + x0 + 2] = avg2(a3, a4);
+    a[y0 * STRIDE + x0 + 3] = avg2(a3, a4);
+    a[(y0 + 3) * STRIDE + x0 + 2] = avg3(a3, a4, a5);
+    a[(y0 + 1) * STRIDE + x0 + 3] = avg3(a3, a4, a5);
+    a[(y0 + 2) * STRIDE + x0 + 3] = avg3(a4, a5, a6);
+    a[(y0 + 3) * STRIDE + x0 + 3] = avg3(a5, a6, a7);
 }
 
-fn predict_bhdpred<const stride: usize>(a: &mut [u8], x0: usize, y0: usize) {
-    let (e0, e1, e2, e3, e4, e5, e6, e7, _) = edge_pixels(a, x0, y0, stride);
+fn predict_bhdpred<const STRIDE: usize>(a: &mut [u8], x0: usize, y0: usize) {
+    let (e0, e1, e2, e3, e4, e5, e6, e7, _) = edge_pixels(a, x0, y0, STRIDE);
 
-    a[(y0 + 3) * stride + x0] = avg2(e0, e1);
-    a[(y0 + 3) * stride + x0 + 1] = avg3(e0, e1, e2);
-    a[(y0 + 2) * stride + x0] = avg2(e1, e2);
-    a[(y0 + 3) * stride + x0 + 2] = avg2(e1, e2);
-    a[(y0 + 2) * stride + x0 + 1] = avg3(e1, e2, e3);
-    a[(y0 + 3) * stride + x0 + 3] = avg3(e1, e2, e3);
-    a[(y0 + 2) * stride + x0 + 2] = avg2(e2, e3);
-    a[(y0 + 1) * stride + x0] = avg2(e2, e3);
-    a[(y0 + 2) * stride + x0 + 3] = avg3(e2, e3, e4);
-    a[(y0 + 1) * stride + x0 + 1] = avg3(e2, e3, e4);
-    a[(y0 + 1) * stride + x0 + 2] = avg2(e3, e4);
-    a[y0 * stride + x0] = avg2(e3, e4);
-    a[(y0 + 1) * stride + x0 + 3] = avg3(e3, e4, e5);
-    a[y0 * stride + x0 + 1] = avg3(e3, e4, e5);
-    a[y0 * stride + x0 + 2] = avg3(e4, e5, e6);
-    a[y0 * stride + x0 + 3] = avg3(e5, e6, e7);
+    a[(y0 + 3) * STRIDE + x0] = avg2(e0, e1);
+    a[(y0 + 3) * STRIDE + x0 + 1] = avg3(e0, e1, e2);
+    a[(y0 + 2) * STRIDE + x0] = avg2(e1, e2);
+    a[(y0 + 3) * STRIDE + x0 + 2] = avg2(e1, e2);
+    a[(y0 + 2) * STRIDE + x0 + 1] = avg3(e1, e2, e3);
+    a[(y0 + 3) * STRIDE + x0 + 3] = avg3(e1, e2, e3);
+    a[(y0 + 2) * STRIDE + x0 + 2] = avg2(e2, e3);
+    a[(y0 + 1) * STRIDE + x0] = avg2(e2, e3);
+    a[(y0 + 2) * STRIDE + x0 + 3] = avg3(e2, e3, e4);
+    a[(y0 + 1) * STRIDE + x0 + 1] = avg3(e2, e3, e4);
+    a[(y0 + 1) * STRIDE + x0 + 2] = avg2(e3, e4);
+    a[y0 * STRIDE + x0] = avg2(e3, e4);
+    a[(y0 + 1) * STRIDE + x0 + 3] = avg3(e3, e4, e5);
+    a[y0 * STRIDE + x0 + 1] = avg3(e3, e4, e5);
+    a[y0 * STRIDE + x0 + 2] = avg3(e4, e5, e6);
+    a[y0 * STRIDE + x0 + 3] = avg3(e5, e6, e7);
 }
 
-fn predict_bhupred<const stride: usize>(a: &mut [u8], x0: usize, y0: usize) {
-    let (l0, l1, l2, l3) = left_pixels(a, x0, y0, stride);
+fn predict_bhupred<const STRIDE: usize>(a: &mut [u8], x0: usize, y0: usize) {
+    let (l0, l1, l2, l3) = left_pixels(a, x0, y0, STRIDE);
 
-    a[y0 * stride + x0] = avg2(l0, l1);
-    a[y0 * stride + x0 + 1] = avg3(l0, l1, l2);
-    a[y0 * stride + x0 + 2] = avg2(l1, l2);
-    a[(y0 + 1) * stride + x0] = avg2(l1, l2);
-    a[y0 * stride + x0 + 3] = avg3(l1, l2, l3);
-    a[(y0 + 1) * stride + x0 + 1] = avg3(l1, l2, l3);
-    a[(y0 + 1) * stride + x0 + 2] = avg2(l2, l3);
-    a[(y0 + 2) * stride + x0] = avg2(l2, l3);
-    a[(y0 + 1) * stride + x0 + 3] = avg3(l2, l3, l3);
-    a[(y0 + 2) * stride + x0 + 1] = avg3(l2, l3, l3);
-    a[(y0 + 2) * stride + x0 + 2] = l3;
-    a[(y0 + 2) * stride + x0 + 3] = l3;
-    a[(y0 + 3) * stride + x0] = l3;
-    a[(y0 + 3) * stride + x0 + 1] = l3;
-    a[(y0 + 3) * stride + x0 + 2] = l3;
-    a[(y0 + 3) * stride + x0 + 3] = l3;
+    a[y0 * STRIDE + x0] = avg2(l0, l1);
+    a[y0 * STRIDE + x0 + 1] = avg3(l0, l1, l2);
+    a[y0 * STRIDE + x0 + 2] = avg2(l1, l2);
+    a[(y0 + 1) * STRIDE + x0] = avg2(l1, l2);
+    a[y0 * STRIDE + x0 + 3] = avg3(l1, l2, l3);
+    a[(y0 + 1) * STRIDE + x0 + 1] = avg3(l1, l2, l3);
+    a[(y0 + 1) * STRIDE + x0 + 2] = avg2(l2, l3);
+    a[(y0 + 2) * STRIDE + x0] = avg2(l2, l3);
+    a[(y0 + 1) * STRIDE + x0 + 3] = avg3(l2, l3, l3);
+    a[(y0 + 2) * STRIDE + x0 + 1] = avg3(l2, l3, l3);
+    a[(y0 + 2) * STRIDE + x0 + 2] = l3;
+    a[(y0 + 2) * STRIDE + x0 + 3] = l3;
+    a[(y0 + 3) * STRIDE + x0] = l3;
+    a[(y0 + 3) * STRIDE + x0 + 1] = l3;
+    a[(y0 + 3) * STRIDE + x0 + 2] = l3;
+    a[(y0 + 3) * STRIDE + x0 + 3] = l3;
 }
 
 #[cfg(all(test, feature = "_benchmarks"))]
