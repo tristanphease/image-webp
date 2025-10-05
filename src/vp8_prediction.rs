@@ -530,6 +530,7 @@ mod benches {
 
     const W: usize = 256;
     const H: usize = 256;
+    const STRIDE: usize = W * 2;
 
     fn make_sample_image() -> Vec<u8> {
         let mut v = Vec::with_capacity((W * H * 4) as usize);
@@ -569,7 +570,7 @@ mod benches {
         ];
 
         b.iter(|| {
-            black_box(predict_4x4(&mut v, W * 2, &modes, &res_data));
+            black_box(predict_4x4::<STRIDE>(&mut v, &modes, &res_data));
         });
     }
 
@@ -578,7 +579,7 @@ mod benches {
         let mut v = make_sample_image();
 
         b.iter(|| {
-            predict_bvepred(black_box(&mut v), 5, 5, W * 2);
+            predict_bvepred::<STRIDE>(black_box(&mut v), 5, 5);
         });
     }
 
@@ -587,7 +588,7 @@ mod benches {
         let mut v = black_box(make_sample_image());
 
         b.iter(|| {
-            black_box(predict_bldpred(black_box(&mut v), 5, 5, W * 2));
+            black_box(predict_bldpred::<STRIDE>(black_box(&mut v), 5, 5));
         });
     }
 
@@ -596,7 +597,7 @@ mod benches {
         let mut v = black_box(make_sample_image());
 
         b.iter(|| {
-            black_box(predict_brdpred(black_box(&mut v), 5, 5, W * 2));
+            black_box(predict_brdpred::<STRIDE>(black_box(&mut v), 5, 5));
         });
     }
 
@@ -605,7 +606,7 @@ mod benches {
         let mut v = black_box(make_sample_image());
 
         b.iter(|| {
-            black_box(predict_bhepred(black_box(&mut v), 5, 5, W * 2));
+            black_box(predict_bhepred::<STRIDE>(black_box(&mut v), 5, 5));
         });
     }
 
@@ -614,7 +615,7 @@ mod benches {
         let v = black_box(make_sample_image());
 
         b.iter(|| {
-            black_box(top_pixels(black_box(&v), 5, 5, W * 2));
+            black_box(top_pixels(black_box(&v), 5, 5, STRIDE));
         });
     }
 
@@ -623,7 +624,7 @@ mod benches {
         let v = black_box(make_sample_image());
 
         b.iter(|| {
-            black_box(edge_pixels(black_box(&v), 5, 5, W * 2));
+            black_box(edge_pixels(black_box(&v), 5, 5, STRIDE));
         });
     }
 }
