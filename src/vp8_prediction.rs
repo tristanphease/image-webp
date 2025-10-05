@@ -187,9 +187,9 @@ pub(crate) fn predict_4x4<const STRIDE: usize>(
 
 pub(crate) fn predict_vpred<
     const SIZE: usize,
+    const STRIDE: usize,
     const X0: usize,
     const Y0: usize,
-    const STRIDE: usize,
 >(
     a: &mut [u8],
 ) {

@@ -714,8 +714,8 @@ impl<R: Read> Vp8Decoder<R> {
         let mut ws = create_border_luma(mbx, mby, mw, &self.top_border_y, &self.left_border_y);
 
         match mb.luma_mode {
-            LumaMode::V => predict_vpred::<16, 1, 1, STRIDE>(&mut ws),
-            LumaMode::H => predict_hpred::<16, 1, 1, STRIDE>(&mut ws),
+            LumaMode::V => predict_vpred::<16, STRIDE, 1, 1>(&mut ws),
+            LumaMode::H => predict_hpred::<16, STRIDE, 1, 1>(&mut ws),
             LumaMode::TM => predict_tmpred::<16, STRIDE>(&mut ws, 1, 1),
             LumaMode::DC => predict_dcpred::<16, STRIDE>(&mut ws, mby != 0, mbx != 0),
             LumaMode::B => predict_4x4::<STRIDE>(&mut ws, &mb.bpred, resdata),
