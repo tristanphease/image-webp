@@ -709,16 +709,16 @@ impl<R: Read> Vp8Decoder<R> {
     }
 
     fn intra_predict_luma(&mut self, mbx: usize, mby: usize, mb: &MacroBlock, resdata: &[i32]) {
-        let stride = 1usize + 16 + 4;
+        const STRIDE: usize = LUMA_STRIDE;
         let mw = self.mbwidth as usize;
         let mut ws = create_border_luma(mbx, mby, mw, &self.top_border_y, &self.left_border_y);
 
         match mb.luma_mode {
-            LumaMode::V => predict_vpred(&mut ws, 16, 1, 1, stride),
-            LumaMode::H => predict_hpred(&mut ws, 16, 1, 1, stride),
-            LumaMode::TM => predict_tmpred(&mut ws, 16, 1, 1, stride),
-            LumaMode::DC => predict_dcpred(&mut ws, 16, stride, mby != 0, mbx != 0),
-            LumaMode::B => predict_4x4(&mut ws, stride, &mb.bpred, resdata),
+            LumaMode::V => predict_vpred::<16, 1, 1, STRIDE>(&mut ws),
+            LumaMode::H => predict_hpred::<16, 1, 1, STRIDE>(&mut ws),
+            LumaMode::TM => predict_tmpred::<16, STRIDE>(&mut ws, 1, 1),
+            LumaMode::DC => predict_dcpred::<16, STRIDE>(&mut ws, mby != 0, mbx != 0),
+            LumaMode::B => predict_4x4::<STRIDE>(&mut ws, &mb.bpred, resdata),
         }
 
         if mb.luma_mode != LumaMode::B {
@@ -730,7 +730,7 @@ impl<R: Read> Vp8Decoder<R> {
                     let y0 = 1 + y * 4;
                     let x0 = 1 + x * 4;
 
-                    add_residue(&mut ws, rb, y0, x0, stride);
+                    add_residue::<STRIDE>(&mut ws, rb, y0, x0);
                 }
             }
         }
@@ -738,12 +738,12 @@ impl<R: Read> Vp8Decoder<R> {
         self.left_border_y[0] = ws[16];
 
         for (i, left) in self.left_border_y[1..][..16].iter_mut().enumerate() {
-            *left = ws[(i + 1) * stride + 16];
+            *left = ws[(i + 1) * STRIDE + 16];
         }
 
         for (top, &w) in self.top_border_y[mbx * 16..][..16]
             .iter_mut()
-            .zip(&ws[16 * stride + 1..][..16])
+            .zip(&ws[16 * STRIDE + 1..][..16])
         {
             *top = w;
         }
@@ -751,7 +751,7 @@ impl<R: Read> Vp8Decoder<R> {
         for y in 0usize..16 {
             for (ybuf, &ws) in self.frame.ybuf[(mby * 16 + y) * mw * 16 + mbx * 16..][..16]
                 .iter_mut()
-                .zip(ws[(1 + y) * stride + 1..][..16].iter())
+                .zip(ws[(1 + y) * STRIDE + 1..][..16].iter())
             {
                 *ybuf = ws;
             }
@@ -759,7 +759,7 @@ impl<R: Read> Vp8Decoder<R> {
     }
 
     fn intra_predict_chroma(&mut self, mbx: usize, mby: usize, mb: &MacroBlock, resdata: &[i32]) {
-        let stride = 1usize + 8;
+        const STRIDE: usize = CHROMA_STRIDE;
 
         let mw = self.mbwidth as usize;
 
@@ -769,20 +769,20 @@ impl<R: Read> Vp8Decoder<R> {
 
         match mb.chroma_mode {
             ChromaMode::DC => {
-                predict_dcpred(&mut uws, 8, stride, mby != 0, mbx != 0);
-                predict_dcpred(&mut vws, 8, stride, mby != 0, mbx != 0);
+                predict_dcpred::<8, STRIDE>(&mut uws, mby != 0, mbx != 0);
+                predict_dcpred::<8, STRIDE>(&mut vws, mby != 0, mbx != 0);
             }
             ChromaMode::V => {
-                predict_vpred(&mut uws, 8, 1, 1, stride);
-                predict_vpred(&mut vws, 8, 1, 1, stride);
+                predict_vpred::<8, STRIDE, 1, 1>(&mut uws);
+                predict_vpred::<8, STRIDE, 1, 1>(&mut vws);
             }
             ChromaMode::H => {
-                predict_hpred(&mut uws, 8, 1, 1, stride);
-                predict_hpred(&mut vws, 8, 1, 1, stride);
+                predict_hpred::<8, STRIDE, 1, 1>(&mut uws);
+                predict_hpred::<8, STRIDE, 1, 1>(&mut vws);
             }
             ChromaMode::TM => {
-                predict_tmpred(&mut uws, 8, 1, 1, stride);
-                predict_tmpred(&mut vws, 8, 1, 1, stride);
+                predict_tmpred::<8, STRIDE>(&mut uws, 1, 1);
+                predict_tmpred::<8, STRIDE>(&mut vws, 1, 1);
             }
         }
 
@@ -793,11 +793,11 @@ impl<R: Read> Vp8Decoder<R> {
 
                 let y0 = 1 + y * 4;
                 let x0 = 1 + x * 4;
-                add_residue(&mut uws, urb, y0, x0, stride);
+                add_residue::<STRIDE>(&mut uws, urb, y0, x0);
 
                 let vrb: &[i32; 16] = resdata[20 * 16 + i * 16..][..16].try_into().unwrap();
 
-                add_residue(&mut vws, vrb, y0, x0, stride);
+                add_residue::<STRIDE>(&mut vws, vrb, y0, x0);
             }
         }
 
@@ -806,7 +806,7 @@ impl<R: Read> Vp8Decoder<R> {
 
         for y in 0usize..8 {
             let uv_buf_index = (mby * 8 + y) * mw * 8 + mbx * 8;
-            let ws_index = (1 + y) * stride + 1;
+            let ws_index = (1 + y) * STRIDE + 1;
 
             for (((ub, vb), &uw), &vw) in self.frame.ubuf[uv_buf_index..][..8]
                 .iter_mut()

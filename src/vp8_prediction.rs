@@ -130,12 +130,11 @@ pub(crate) fn create_border_chroma(
 //
 // Clippy suggests the clamp method, but it seems to optimize worse as of rustc 1.82.0 nightly.
 #[allow(clippy::manual_clamp)]
-pub(crate) fn add_residue(
+pub(crate) fn add_residue<const stride: usize>(
     pblock: &mut [u8],
     rblock: &[i32; 16],
     y0: usize,
     x0: usize,
-    stride: usize,
 ) {
     let mut pos = y0 * stride + x0;
     for row in rblock.chunks(4) {
@@ -156,7 +155,11 @@ fn avg2(this: u8, right: u8) -> u8 {
     avg as u8
 }
 
-pub(crate) fn predict_4x4(ws: &mut [u8], stride: usize, modes: &[IntraMode], resdata: &[i32]) {
+pub(crate) fn predict_4x4<const stride: usize>(
+    ws: &mut [u8],
+    modes: &[IntraMode],
+    resdata: &[i32],
+) {
     for sby in 0usize..4 {
         for sbx in 0usize..4 {
             let i = sbx + sby * 4;
@@ -164,25 +167,32 @@ pub(crate) fn predict_4x4(ws: &mut [u8], stride: usize, modes: &[IntraMode], res
             let x0 = sbx * 4 + 1;
 
             match modes[i] {
-                IntraMode::TM => predict_tmpred(ws, 4, x0, y0, stride),
-                IntraMode::VE => predict_bvepred(ws, x0, y0, stride),
-                IntraMode::HE => predict_bhepred(ws, x0, y0, stride),
-                IntraMode::DC => predict_bdcpred(ws, x0, y0, stride),
-                IntraMode::LD => predict_bldpred(ws, x0, y0, stride),
-                IntraMode::RD => predict_brdpred(ws, x0, y0, stride),
-                IntraMode::VR => predict_bvrpred(ws, x0, y0, stride),
-                IntraMode::VL => predict_bvlpred(ws, x0, y0, stride),
-                IntraMode::HD => predict_bhdpred(ws, x0, y0, stride),
-                IntraMode::HU => predict_bhupred(ws, x0, y0, stride),
+                IntraMode::TM => predict_tmpred::<4, stride>(ws, x0, y0),
+                IntraMode::VE => predict_bvepred::<stride>(ws, x0, y0),
+                IntraMode::HE => predict_bhepred::<stride>(ws, x0, y0),
+                IntraMode::DC => predict_bdcpred::<stride>(ws, x0, y0),
+                IntraMode::LD => predict_bldpred::<stride>(ws, x0, y0),
+                IntraMode::RD => predict_brdpred::<stride>(ws, x0, y0),
+                IntraMode::VR => predict_bvrpred::<stride>(ws, x0, y0),
+                IntraMode::VL => predict_bvlpred::<stride>(ws, x0, y0),
+                IntraMode::HD => predict_bhdpred::<stride>(ws, x0, y0),
+                IntraMode::HU => predict_bhupred::<stride>(ws, x0, y0),
             }
 
             let rb: &[i32; 16] = resdata[i * 16..][..16].try_into().unwrap();
-            add_residue(ws, rb, y0, x0, stride);
+            add_residue::<stride>(ws, rb, y0, x0);
         }
     }
 }
 
-pub(crate) fn predict_vpred(a: &mut [u8], size: usize, x0: usize, y0: usize, stride: usize) {
+pub(crate) fn predict_vpred<
+    const size: usize,
+    const x0: usize,
+    const y0: usize,
+    const stride: usize,
+>(
+    a: &mut [u8],
+) {
     // This pass copies the top row to the rows below it.
     let (above, curr) = a.split_at_mut(stride * y0);
     let above_slice = &above[x0..];
@@ -194,7 +204,14 @@ pub(crate) fn predict_vpred(a: &mut [u8], size: usize, x0: usize, y0: usize, str
     }
 }
 
-pub(crate) fn predict_hpred(a: &mut [u8], size: usize, x0: usize, y0: usize, stride: usize) {
+pub(crate) fn predict_hpred<
+    const size: usize,
+    const stride: usize,
+    const x0: usize,
+    const y0: usize,
+>(
+    a: &mut [u8],
+) {
     // This pass copies the first value of a row to the values right of it.
     for chunk in a.chunks_exact_mut(stride).skip(y0).take(size) {
         let left = chunk[x0 - 1];
@@ -202,7 +219,11 @@ pub(crate) fn predict_hpred(a: &mut [u8], size: usize, x0: usize, y0: usize, str
     }
 }
 
-pub(crate) fn predict_dcpred(a: &mut [u8], size: usize, stride: usize, above: bool, left: bool) {
+pub(crate) fn predict_dcpred<const size: usize, const stride: usize>(
+    a: &mut [u8],
+    above: bool,
+    left: bool,
+) {
     let mut sum = 0;
     let mut shf = if size == 8 { 2 } else { 3 };
 
@@ -235,7 +256,11 @@ pub(crate) fn predict_dcpred(a: &mut [u8], size: usize, stride: usize, above: bo
 
 // Clippy suggests the clamp method, but it seems to optimize worse as of rustc 1.82.0 nightly.
 #[allow(clippy::manual_clamp)]
-pub(crate) fn predict_tmpred(a: &mut [u8], size: usize, x0: usize, y0: usize, stride: usize) {
+pub(crate) fn predict_tmpred<const size: usize, const stride: usize>(
+    a: &mut [u8],
+    x0: usize,
+    y0: usize,
+) {
     // The formula for tmpred is:
     // X_ij = L_i + A_j - P (i, j=0, 1, 2, 3)
     //
@@ -268,7 +293,7 @@ pub(crate) fn predict_tmpred(a: &mut [u8], size: usize, x0: usize, y0: usize, st
     }
 }
 
-fn predict_bdcpred(a: &mut [u8], x0: usize, y0: usize, stride: usize) {
+fn predict_bdcpred<const stride: usize>(a: &mut [u8], x0: usize, y0: usize) {
     let mut v = 4;
 
     a[(y0 - 1) * stride + x0..][..4]
@@ -336,7 +361,7 @@ fn edge_pixels(
     (e0, e1, e2, e3, e4, e5, e6, e7, e8)
 }
 
-fn predict_bvepred(a: &mut [u8], x0: usize, y0: usize, stride: usize) {
+fn predict_bvepred<const stride: usize>(a: &mut [u8], x0: usize, y0: usize) {
     let p = topleft_pixel(a, x0, y0, stride);
     let (a0, a1, a2, a3, a4, ..) = top_pixels(a, x0, y0, stride);
     let avg_1 = avg3(p, a0, a1);
@@ -353,7 +378,7 @@ fn predict_bvepred(a: &mut [u8], x0: usize, y0: usize, stride: usize) {
     }
 }
 
-fn predict_bhepred(a: &mut [u8], x0: usize, y0: usize, stride: usize) {
+fn predict_bhepred<const stride: usize>(a: &mut [u8], x0: usize, y0: usize) {
     let p = topleft_pixel(a, x0, y0, stride);
     let (l0, l1, l2, l3) = left_pixels(a, x0, y0, stride);
 
@@ -373,7 +398,7 @@ fn predict_bhepred(a: &mut [u8], x0: usize, y0: usize, stride: usize) {
     }
 }
 
-fn predict_bldpred(a: &mut [u8], x0: usize, y0: usize, stride: usize) {
+fn predict_bldpred<const stride: usize>(a: &mut [u8], x0: usize, y0: usize) {
     let (a0, a1, a2, a3, a4, a5, a6, a7) = top_pixels(a, x0, y0, stride);
 
     let avgs = [
@@ -394,7 +419,7 @@ fn predict_bldpred(a: &mut [u8], x0: usize, y0: usize, stride: usize) {
     }
 }
 
-fn predict_brdpred(a: &mut [u8], x0: usize, y0: usize, stride: usize) {
+fn predict_brdpred<const stride: usize>(a: &mut [u8], x0: usize, y0: usize) {
     let (e0, e1, e2, e3, e4, e5, e6, e7, e8) = edge_pixels(a, x0, y0, stride);
 
     let avgs = [
@@ -414,7 +439,7 @@ fn predict_brdpred(a: &mut [u8], x0: usize, y0: usize, stride: usize) {
     }
 }
 
-fn predict_bvrpred(a: &mut [u8], x0: usize, y0: usize, stride: usize) {
+fn predict_bvrpred<const stride: usize>(a: &mut [u8], x0: usize, y0: usize) {
     let (_, e1, e2, e3, e4, e5, e6, e7, e8) = edge_pixels(a, x0, y0, stride);
 
     a[(y0 + 3) * stride + x0] = avg3(e1, e2, e3);
@@ -435,7 +460,7 @@ fn predict_bvrpred(a: &mut [u8], x0: usize, y0: usize, stride: usize) {
     a[y0 * stride + x0 + 3] = avg2(e7, e8);
 }
 
-fn predict_bvlpred(a: &mut [u8], x0: usize, y0: usize, stride: usize) {
+fn predict_bvlpred<const stride: usize>(a: &mut [u8], x0: usize, y0: usize) {
     let (a0, a1, a2, a3, a4, a5, a6, a7) = top_pixels(a, x0, y0, stride);
 
     a[y0 * stride + x0] = avg2(a0, a1);
@@ -456,7 +481,7 @@ fn predict_bvlpred(a: &mut [u8], x0: usize, y0: usize, stride: usize) {
     a[(y0 + 3) * stride + x0 + 3] = avg3(a5, a6, a7);
 }
 
-fn predict_bhdpred(a: &mut [u8], x0: usize, y0: usize, stride: usize) {
+fn predict_bhdpred<const stride: usize>(a: &mut [u8], x0: usize, y0: usize) {
     let (e0, e1, e2, e3, e4, e5, e6, e7, _) = edge_pixels(a, x0, y0, stride);
 
     a[(y0 + 3) * stride + x0] = avg2(e0, e1);
@@ -477,7 +502,7 @@ fn predict_bhdpred(a: &mut [u8], x0: usize, y0: usize, stride: usize) {
     a[y0 * stride + x0 + 3] = avg3(e5, e6, e7);
 }
 
-fn predict_bhupred(a: &mut [u8], x0: usize, y0: usize, stride: usize) {
+fn predict_bhupred<const stride: usize>(a: &mut [u8], x0: usize, y0: usize) {
     let (l0, l1, l2, l3) = left_pixels(a, x0, y0, stride);
 
     a[y0 * stride + x0] = avg2(l0, l1);
@@ -711,7 +736,7 @@ mod tests {
         ];
         let expected: [u8; 16] = [0, 0, 0, 0, 255, 255, 255, 255, 0, 0, 0, 0, 10, 29, 33, 25];
 
-        add_residue(&mut pblock, &rblock, 0, 0, 4);
+        add_residue::<4>(&mut pblock, &rblock, 0, 0);
 
         for (&e, &i) in expected.iter().zip(&pblock) {
             assert_eq!(e, i);
@@ -733,7 +758,7 @@ mod tests {
                       3, 0, 0, 0, 0,
                       2, 0, 0, 0, 0,
                       1, 0, 0, 0, 0];
-        predict_bhepred(&mut im, 1, 1, 5);
+        predict_bhepred::<5>(&mut im, 1, 1);
         for (&e, i) in expected.iter().zip(im) {
             assert_eq!(e, i);
         }
@@ -754,7 +779,7 @@ mod tests {
                       3, 0, 0, 0, 0,
                       2, 0, 0, 0, 0,
                       1, 0, 0, 0, 0];
-        predict_brdpred(&mut im, 1, 1, 5);
+        predict_brdpred::<5>(&mut im, 1, 1);
         for (&e, i) in expected.iter().zip(im) {
             assert_eq!(e, i);
         }
@@ -780,7 +805,7 @@ mod tests {
         let avg_6 = 7u8;
         let avg_7 = 8u8;
 
-        predict_bldpred(&mut im, 0, 1, 8);
+        predict_bldpred::<8>(&mut im, 0, 1);
 
         assert_eq!(im[8], avg_1);
         assert_eq!(im[9], avg_2);
@@ -817,7 +842,7 @@ mod tests {
         let avg_3 = 4u8;
         let avg_4 = 5u8;
 
-        predict_bvepred(&mut im, 1, 1, 9);
+        predict_bvepred::<9>(&mut im, 1, 1);
 
         assert_eq!(im[10], avg_1);
         assert_eq!(im[11], avg_2);
